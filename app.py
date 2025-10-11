@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import plotly.figure_factory as ff
 from services import (
     process_excel_file,
     get_subject_list,
@@ -10,10 +11,15 @@ from services import (
     get_dynamic_subject_recommendations,
     get_threshold_based_recommendations,
     get_subject_exam_types,
+    get_subject_marks,
+    get_subject_marks_summary,
     extract_max_marks_from_header,
 )
 import re
 import numpy as np
+import json
+from datetime import datetime
+import io
 
 def _is_practical_col(col_name):
     if not col_name or pd.isna(col_name):
@@ -64,116 +70,120 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling with improved recommendation colors
+# CSS with black and blue theme (#0149ac)
 st.markdown("""
 <style>
+    /* Main App Background */
+    .stApp {
+        background-color: #0f1115;
+        color: #ffffff;
+    }
+    
+    /* Simple Header */
     .main-header {
-        font-size: 3rem;
-        font-weight: bold;
-        color: #1f77b4;
+        font-size: 2.5rem;
+        font-weight: 600;
+        color: #0149ac;
         text-align: center;
         margin-bottom: 2rem;
     }
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #1f77b4;
+    
+    /* Sidebar Styling */
+    .css-1d391kg {
+        background-color: #0149ac;
     }
-    .success-msg {
-        background-color: #d4edda;
-        color: #155724;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border: 1px solid #c3e6cb;
+    
+    /* Button Styling */
+    .stButton > button {
+        background-color: #0149ac;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
     }
-    .info-box {
-        background-color: #e3f2fd;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border-left: 4px solid #2196f3;
-        margin: 1rem 0;
-    }
-    .recommendation-card {
-        background: #ffffff;
-        color: #000000;
-        border-radius: 12px;
-        padding: 20px;
-        margin: 15px 0;
-        border: 1px solid #000000;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-        transition: transform 0.3s ease;
-    }
-    .recommendation-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-    }
-    .recommendation-title {
-        font-size: 1.2em;
-        font-weight: bold;
-        color: #000000;
-        margin-bottom: 10px;
-    }
-    .recommendation-description {
-        font-size: 1em;
-        color: #222222;
-        margin-bottom: 12px;
-        line-height: 1.4;
-    }
-    .recommendation-action {
-        font-size: 0.95em;
-        color: #333333;
-        font-style: normal;
-        border-top: 1px solid rgba(0, 0, 0, 0.1);
-        padding-top: 10px;
-    }
-    .critical-recommendation {
-        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
-        border-left-color: #c0392b;
-    }
-    .high-recommendation {
-        background: linear-gradient(135deg, #ffa726 0%, #fb8c00 100%);
-        border-left-color: #e65100;
-    }
-    .medium-recommendation {
-        background: linear-gradient(135deg, #42a5f5 0%, #1e88e5 100%);
-        border-left-color: #0d47a1;
-    }
-    .low-recommendation {
-        background: linear-gradient(135deg, #66bb6a 0%, #43a047 100%);
-        border-left-color: #1b5e20;
-    }
-    .weak-student-card {
-        background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
-        border-radius: 0.5rem;
-        padding: 1rem;
-        margin: 0.5rem 0;
-        border-left: 4px solid #dc3545;
-    }
-    .subject-input-container {
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        padding: 20px;
-        border-radius: 12px;
-        margin: 20px 0;
+    
+    .stButton > button:hover {
+        background-color: #013a8a;
         color: white;
     }
-    .dynamic-rec-header {
-        font-size: 1.5em;
-        font-weight: bold;
-        color: #2c3e50;
-        text-align: center;
-        margin: 20px 0;
-        padding: 15px;
-        background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
-        color: white;
+    
+    /* Selectbox Styling */
+    .stSelectbox > div > div {
+        background-color: #0f1115;
+        color: #ffffff;
+        border: 2px solid #0149ac;
+        border-radius: 6px;
+    }
+    
+    .stSelectbox > div > div:hover {
+        border-color: #013a8a;
+    }
+    
+    /* File Uploader Styling */
+    .stFileUploader > div {
+        background-color: #0f1115;
+        color: #ffffff;
+        border: 2px dashed #0149ac;
+        border-radius: 6px;
+    }
+    
+    .stFileUploader > div:hover {
+        border-color: #013a8a;
+        background-color: #f8f9ff;
+    }
+    
+    /* Metric Cards */
+    .metric-container {
+        background-color: #141821;
+        border: 1px solid rgba(1,73,172,0.35);
         border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+        color: #ffffff;
+    }
+    
+    /* Success Messages */
+    .stSuccess {
+        background-color: rgba(1,73,172,0.12);
+        border-left: 4px solid #0149ac;
+        color: #cfe2ff;
+    }
+    
+    /* Info Messages */
+    .stInfo {
+        background-color: rgba(1,73,172,0.12);
+        border-left: 4px solid #0149ac;
+        color: #cfe2ff;
+    }
+    
+    /* Warning Messages */
+    .stWarning {
+        background-color: #332a19;
+        border-left: 4px solid #f59e0b;
+        color: #f8d7a0;
+    }
+    
+    /* Error Messages */
+    .stError {
+        background-color: #3a1f20;
+        border-left: 4px solid #ef4444;
+        color: #f8d7da;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Main title
-st.markdown('<div class="main-header">🎓 GradeGraph - Student Performance Analyzer</div>', unsafe_allow_html=True)
+# Main title - GradeGraph
+st.markdown("""
+<div style="text-align: center; margin-bottom: 2rem; padding: 2rem 0;">
+    <h1 style="font-size: 4rem; font-weight: 800; color: #0149ac; margin: 0; letter-spacing: 2px; text-shadow: 2px 2px 8px rgba(1, 73, 172, 0.4);">
+        🎓 GradeGraph
+    </h1>
+    <h3 style="font-size: 1.4rem; font-weight: 400; color: #b0b8c4; margin: 0.8rem 0 0 0; font-style: italic; letter-spacing: 1px;">
+        Student Performance Analyzer
+    </h3>
+</div>
+""", unsafe_allow_html=True)
 
 # Initialize session state
 if 'df_full' not in st.session_state:
@@ -181,22 +191,76 @@ if 'df_full' not in st.session_state:
 if 'df_suggestions' not in st.session_state:
     st.session_state.df_suggestions = None
 
-# Sidebar for navigation
-st.sidebar.title("📊 Navigation")
-page = st.sidebar.radio("Select Page", [
-    "📤 Upload & Process",
-    "📈 Dashboard",
-    "👥 Student Search",
-    "📊 Subject Analysis",
-    "🎯 Performance Insights",
-    "🎯 Threshold-Based Recommendations"
-])
+# Simple Sidebar Navigation
+st.sidebar.markdown("### 📊 Navigation")
+
+# Simple navigation options
+navigation_options = {
+    "📤 Upload": "Upload Excel files",
+    "📈 Dashboard": "Analytics dashboard", 
+    "👥 Students": "Student analysis",
+    "📊 Subjects": "Subject analysis",
+    "🎯 Insights": "Performance insights",
+    "📋 Reports": "Export reports"
+}
+
+page = st.sidebar.selectbox(
+    "Select Page", 
+    list(navigation_options.keys())
+)
+
+# Simple theme selector
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 🎨 Theme")
+theme = st.sidebar.selectbox("Choose Theme", ["Default", "Dark Mode"])
+
+# Apply theme-specific CSS
+if theme == "Dark Mode":
+    st.markdown("""
+    <style>
+        .stApp {
+            background-color: #1e1e1e;
+            color: #ffffff;
+        }
+        .main-header {
+            color: #ffffff !important;
+        }
+        .metric-card {
+            background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+            color: #ffffff;
+        }
+        .interactive-card {
+            background: #2d2d2d;
+            color: #ffffff;
+        }
+        .stButton > button {
+            background-color: #0149ac;
+            color: white;
+        }
+        .stButton > button:hover {
+            background-color: #013a8a;
+        }
+        .css-1d391kg {
+            background-color: #0149ac;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Simple data management section
+if st.session_state.get('df_full') is not None:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🔄 Data Management")
+    if st.sidebar.button("🔄 Refresh Data", help="Reload and reprocess current data"):
+        st.session_state.df_full = None
+        st.session_state.df_suggestions = None
+        st.rerun()
+
 
 # Persistent dashboard snapshot in sidebar
 if st.session_state.get('df_full') is not None and st.session_state.get('df_suggestions') is not None:
     df_full_sidebar = st.session_state.df_full
     df_sugg_sidebar = st.session_state.df_suggestions
-    with st.sidebar.expander("Dashboard Snapshot", expanded=True):
+    with st.sidebar.expander("📊 Dashboard Snapshot", expanded=True):
         col_a, col_b = st.columns(2)
         with col_a:
             st.metric("Students", len(df_full_sidebar))
@@ -211,9 +275,7 @@ if st.session_state.get('df_full') is not None and st.session_state.get('df_sugg
             st.metric("Weak", int(weak))
 
 # File upload section
-if page == "📤 Upload & Process":
-    st.header("📤 Upload Excel Sheet")
-
+if page == "📤 Upload":
     uploaded_file = st.file_uploader(
         "Choose an Excel file",
         type=["xlsx"],
@@ -229,7 +291,7 @@ if page == "📤 Upload & Process":
             st.session_state.df_full = df_full
             st.session_state.df_suggestions = df_suggestions
 
-            st.markdown('<div class="success-msg">✅ File processed successfully!</div>', unsafe_allow_html=True)
+            st.success("✅ File processed successfully!")
 
             # Display basic statistics (REMOVED avg and excellence scores)
             col1, col2, col3, col4 = st.columns(4)
@@ -250,24 +312,12 @@ if page == "📤 Upload & Process":
                 st.metric("⚠️ Weak Learners", weak_count)
 
             # Calculation Logic Explanation
-            st.markdown('<div class="info-box">', unsafe_allow_html=True)
-            st.markdown("### 📊 **Calculation Logic Explanation**")
-            st.markdown("""
-            **Academic Performance %:**
-            - Ratio of total marks obtained vs. total maximum marks possible
-            - Formula: `(Total Obtained Marks / Total Maximum Marks) × 100`
-            - Maximum marks are extracted from column headers (e.g., "Subject ISE (25)" → 25 marks)
-
-            **Practical Performance %:**
-            - Calculated only from columns identified as practical assessments (containing "PRACTICAL" or "PR")
-            - Formula: `(Practical Marks Obtained / Total Practical Marks Possible) × 100`
-
-            **Student Classification:**
-            - **Bright**: Academic Performance ≥ 80% OR Coding Expertise = 'Advanced'
-            - **Average**: Academic Performance 60-79% OR Coding Expertise = 'Intermediate'
-            - **Weak**: Academic Performance < 60% AND Coding Expertise = 'Beginner'
+            st.info("""
+            **Calculation Logic:**
+            - Academic Performance %: Ratio of total marks obtained vs. total maximum marks possible
+            - Practical Performance %: Calculated from practical assessments (PRACTICAL/PR columns)
+            - Student Classification: Based on Academic Performance and Coding Expertise levels
             """)
-            st.markdown('</div>', unsafe_allow_html=True)
 
             # Show preview of processed data
             with st.expander("📋 Preview Processed Data", expanded=False):
@@ -284,24 +334,80 @@ if page == "📤 Upload & Process":
     else:
         st.info("📌 Please upload a student Excel file to begin analysis.")
 
-# Dashboard page (REMOVED avg and excellence metrics)
+# Enhanced Dashboard page with modern features
 elif page == "📈 Dashboard":
     if st.session_state.df_full is not None:
         df_full = st.session_state.df_full
         df_suggestions = st.session_state.df_suggestions
 
         st.header("📈 Performance Dashboard")
-
-        # Performance distribution
+        
+        # Key Performance Indicators
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            total_students = len(df_full)
+            st.metric(
+                "👥 Total Students", 
+                total_students,
+                help="Total number of students in the dataset"
+            )
+        
+        with col2:
+            subjects_count = len(get_subject_list(df_full))
+            st.metric(
+                "📚 Subjects", 
+                subjects_count,
+                help="Total number of subjects analyzed"
+            )
+        
+        with col3:
+            if 'Academic_Performance_%' in df_full.columns:
+                avg_performance = df_full['Academic_Performance_%'].mean()
+                st.metric(
+                    "📈 Avg Performance", 
+                    f"{avg_performance:.1f}%",
+                    help="Average academic performance across all students"
+                )
+            else:
+                st.metric("📈 Avg Performance", "N/A")
+        
+        with col4:
+            bright_count = len(df_suggestions[df_suggestions['Category'] == 'Bright'])
+            st.metric(
+                "🌟 Bright Students", 
+                bright_count,
+                delta=f"{bright_count/total_students*100:.1f}%" if total_students > 0 else "0%",
+                help="Number of bright performing students"
+            )
+        
+        with col5:
+            weak_count = len(df_suggestions[df_suggestions['Category'] == 'Weak'])
+            st.metric(
+                "⚠️ Weak Students", 
+                weak_count,
+                delta=f"{weak_count/total_students*100:.1f}%" if total_students > 0 else "0%",
+                help="Number of students needing attention"
+            )
+        
+        
+        # Use full dataset without filters
+        filtered_df = df_full
+        
+        # Interactive Visualizations
+        st.subheader("📊 Interactive Visualizations")
+        
+        # Main charts row
         col1, col2 = st.columns(2)
 
         with col1:
-            # Category distribution pie chart
+            # Category distribution with donut chart
             category_counts = df_suggestions['Category'].value_counts()
-            fig_pie = px.pie(
+            fig_donut = px.pie(
                 values=category_counts.values,
                 names=category_counts.index,
                 title="📊 Student Category Distribution",
+                hole=0.4,
                 color_discrete_map={
                     'Bright': '#28a745',
                     'Average': '#ffc107',
@@ -309,63 +415,105 @@ elif page == "📈 Dashboard":
                     'Unknown': '#6c757d'
                 }
             )
-            st.plotly_chart(fig_pie, use_container_width=True)
+            fig_donut.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig_donut, use_container_width=True)
 
         with col2:
-            # Academic Performance distribution
-            if 'Academic_Performance_%' in df_full.columns:
-                fig_hist = px.histogram(
-                    df_full,
-                    x='Academic_Performance_%',
+            # Performance distribution with box plot
+            if 'Academic_Performance_%' in filtered_df.columns:
+                fig_box = px.box(
+                    filtered_df,
+                    y='Academic_Performance_%',
                     title="📈 Academic Performance Distribution",
-                    nbins=20,
-                    color_discrete_sequence=['#1f77b4']
+                    color_discrete_sequence=['#667eea']
                 )
-                fig_hist.update_layout(xaxis_title="Academic Performance %", yaxis_title="Number of Students")
-                st.plotly_chart(fig_hist, use_container_width=True)
+                fig_box.update_layout(
+                    yaxis_title="Academic Performance %",
+                    showlegend=False
+                )
+                st.plotly_chart(fig_box, use_container_width=True)
+            else:
+                st.info("Academic Performance data not available")
 
-        # Top and bottom performers
+        # Performance Leaders & Areas for Improvement
+        st.subheader("🏆 Performance Leaders & Areas for Improvement")
+        
         col3, col4 = st.columns(2)
 
         with col3:
-            st.subheader("🏆 Top 10 Performers")
-            if 'Academic_Performance_%' in df_full.columns:
-                top_performers = df_full.nlargest(10, 'Academic_Performance_%')[['SR.No', 'Name', 'Academic_Performance_%', 'Category']]
-                st.dataframe(top_performers, use_container_width=True)
+            if 'Academic_Performance_%' in filtered_df.columns:
+                weak_count_matched = int((df_suggestions['Category'] == 'Weak').sum())
+                matched_top_count = min(weak_count_matched, len(filtered_df)) if weak_count_matched > 0 else 0
+                st.markdown(f"### 🏆 Bright Learners (Top {matched_top_count} matched to Weak)")
+
+                if matched_top_count > 0:
+                    bright_learners_matched = filtered_df.nlargest(matched_top_count, 'Academic_Performance_%')[['SR.No', 'Name', 'Academic_Performance_%', 'Category']].copy()
+                    bright_learners_matched['Academic_Performance_%'] = bright_learners_matched['Academic_Performance_%'].round(2)
+
+                    # Add ranking
+                    bright_learners_matched['Rank'] = range(1, len(bright_learners_matched) + 1)
+                    bright_learners_display = bright_learners_matched[['Rank', 'Name', 'Academic_Performance_%', 'Category']]
+
+                    st.dataframe(
+                        bright_learners_display,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                    csv_matched = bright_learners_matched.to_csv(index=False)
+                    st.download_button(
+                        "📥 Download Bright Learners (Matched)",
+                        csv_matched,
+                        "bright_learners_matched.csv",
+                        "text/csv"
+                    )
+                else:
+                    st.info("No weak learners detected, so no matched Bright learners list to display.")
+            else:
+                st.info("Performance data not available")
 
         with col4:
-            st.subheader("⚠️ Students Needing Attention")
-            if 'Academic_Performance_%' in df_full.columns:
-                bottom_performers = df_full.nsmallest(10, 'Academic_Performance_%')[['SR.No', 'Name', 'Academic_Performance_%', 'Category']]
-                st.dataframe(bottom_performers, use_container_width=True)
-
-        # Download options
-        st.subheader("⬇️ Download Reports")
-        col5, col6 = st.columns(2)
-
-        with col5:
-            csv_full = df_full.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "📊 Download Full Data CSV",
-                csv_full,
-                "full_student_data.csv",
-                "text/csv"
-            )
-
-        with col6:
-            csv_suggestions = df_suggestions.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "🎯 Download Classifications CSV",
-                csv_suggestions,
-                "student_classifications.csv",
-                "text/csv"
-            )
+            st.markdown("### ⚠️ Students Needing Attention")
+            if 'Academic_Performance_%' in filtered_df.columns:
+                try:
+                    # Check if Category column exists in the main dataframe
+                    if 'Category' in filtered_df.columns:
+                        # Get only weak students directly from main dataframe
+                        weak_students = filtered_df[filtered_df['Category'] == 'Weak']
+                        
+                        if len(weak_students) > 0:
+                            # Select and prepare the data
+                            weak_students_detailed = weak_students[['SR.No', 'Name', 'Academic_Performance_%', 'Category']].copy()
+                            
+                            # Sort by performance (lowest first)
+                            weak_students_detailed = weak_students_detailed.sort_values('Academic_Performance_%')
+                            weak_students_detailed['Academic_Performance_%'] = weak_students_detailed['Academic_Performance_%'].round(2)
+                            
+                            # Add ranking
+                            weak_students_detailed['Rank'] = range(1, len(weak_students_detailed) + 1)
+                            weak_students_detailed = weak_students_detailed[['Rank', 'Name', 'Academic_Performance_%', 'Category']]
+                            
+                            st.dataframe(
+                                weak_students_detailed, 
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                        else:
+                            st.info("No weak students identified in the current dataset.")
+                    else:
+                        st.error("Category column not found in the main dataframe.")
+                        st.info("Available columns: " + ", ".join(filtered_df.columns.tolist()))
+                except Exception as e:
+                    st.error(f"Error displaying weak students: {str(e)}")
+                    st.info("Please check if the data is properly processed.")
+            else:
+                st.info("Performance data not available")
 
     else:
         st.warning("📤 Please upload and process an Excel file first.")
 
 # Student search page
-elif page == "👥 Student Search":
+elif page == "👥 Students":
     if st.session_state.df_full is not None:
         df_full = st.session_state.df_full
 
@@ -465,23 +613,12 @@ elif page == "👥 Student Search":
         st.warning("📤 Please upload and process an Excel file first.")
 
 # Subject analysis page
-elif page == "📊 Subject Analysis":
+elif page == "📊 Subjects":
     if st.session_state.df_full is not None:
         df_full = st.session_state.df_full
         subjects = get_subject_list(df_full)
 
         st.header("📊 Subject-wise Analysis")
-
-        # Subject Analysis Logic Explanation (updated)
-        st.markdown('<div class="info-box">', unsafe_allow_html=True)
-        st.markdown("### 📚 **Subject Analysis Logic**")
-        st.markdown("""
-        **Percentages:**
-        - Theory % = (ISE + MSE + ESE obtained) / (sum of their max marks) × 100
-        - Subject % = (ISE + MSE + ESE + Practical obtained) / (sum of their max marks) × 100
-        - Max marks are parsed from headers like "(25)", "(60)"
-        """)
-        st.markdown('</div>', unsafe_allow_html=True)
 
         if subjects:
             selected_subject = st.selectbox("📚 Select Subject", subjects)
@@ -505,59 +642,54 @@ elif page == "📊 Subject Analysis":
                 if subject_cols:
                     st.subheader(f"📈 Analysis for {selected_subject}")
 
-                    # Calculate subject statistics
-                    subject_data = df_full[subject_cols + ['Name', 'SR.No', 'Category']].copy()
+                    # Calculate subject statistics using marks (MSE + ESE)
+                    subject_marks = get_subject_marks(df_full, selected_subject)
+                    
+                    if subject_marks:
+                        # Create subject data with marks
+                        subject_data = df_full[['Name', 'SR.No', 'Category']].copy()
+                        subject_data['Subject_Marks'] = subject_marks
+                        
+                        # Get summary statistics
+                        marks_summary = get_subject_marks_summary(df_full, selected_subject)
+                        
+                        # Display summary metrics
+                        col_summary1, col_summary2, col_summary3, col_summary4 = st.columns(4)
+                        
+                        with col_summary1:
+                            st.metric("📊 Average Marks", f"{marks_summary['average_marks']:.1f}")
+                        
+                        with col_summary2:
+                            st.metric("📈 Max Marks", f"{marks_summary['max_marks']:.1f}")
+                        
+                        with col_summary3:
+                            st.metric("📉 Min Marks", f"{marks_summary['min_marks']:.1f}")
+                        
+                        with col_summary4:
+                            st.metric("📊 Std Deviation", f"{marks_summary['std_marks']:.1f}")
 
-                    # Split into theory and practical columns
-                    theory_cols = [c for c in subject_cols if any(x in c.upper() for x in ['ISE', 'MSE', 'ESE'])]
-                    prac_cols = [c for c in subject_cols if _is_practical_col(c)]
+                        # Top and bottom performers in this subject
+                        col1, col2 = st.columns(2)
 
-                    # Compute percentages per student
-                    subject_data['Theory_%'] = subject_data.apply(lambda r: _row_percentage(r, theory_cols), axis=1) if theory_cols else np.nan
-                    subject_data['Subject_%'] = subject_data.apply(lambda r: _row_percentage(r, theory_cols + prac_cols), axis=1) if (theory_cols or prac_cols) else np.nan
+                        with col1:
+                            st.subheader(f"🏆 Top Performers in {selected_subject}")
+                            top_subject = subject_data.nlargest(10, 'Subject_Marks')[['SR.No', 'Name', 'Subject_Marks']]
+                            top_subject['Subject_Marks'] = top_subject['Subject_Marks'].round(1)
+                            # Add ranking
+                            top_subject['Rank'] = range(1, len(top_subject) + 1)
+                            top_subject = top_subject[['Rank', 'Name', 'Subject_Marks']]
+                            st.dataframe(top_subject, use_container_width=True, hide_index=True)
 
-                    # Performance distribution
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        vals = subject_data['Theory_%'].dropna()
-                        if len(vals) > 0:
-                            fig_t = px.histogram(vals, nbins=15, title=f"📊 {selected_subject} - Theory % Distribution",
-                                                 labels={'value': 'Theory %', 'count': 'Students'})
-                            st.plotly_chart(fig_t, use_container_width=True)
-                        else:
-                            st.info("No theory data available for this subject.")
-
-                    with col2:
-                        vals2 = subject_data['Subject_%'].dropna()
-                        if len(vals2) > 0:
-                            fig_s = px.histogram(vals2, nbins=15, title=f"📊 {selected_subject} - Subject % Distribution",
-                                                 labels={'value': 'Subject %', 'count': 'Students'})
-                            st.plotly_chart(fig_s, use_container_width=True)
-                        else:
-                            st.info("No subject percentage data available.")
-
-                    # Top and bottom performers in this subject (aligned side-by-side)
-                    col3, col4 = st.columns(2)
-
-                    with col3:
-                        st.subheader(f"🏆 Top Performers in {selected_subject}")
-                        top_subject = subject_data.nlargest(10, 'Subject_%')[['SR.No', 'Name', 'Subject_%']]
-                        top_subject['Subject_%'] = top_subject['Subject_%'].round(2)
-                        st.dataframe(top_subject, use_container_width=True)
-
-                    with col4:
-                        st.subheader(f"⚠️ Need Improvement in {selected_subject}")
-                        bottom_subject = subject_data.nsmallest(10, 'Subject_%')[['SR.No', 'Name', 'Subject_%']]
-                        bottom_subject['Subject_%'] = bottom_subject['Subject_%'].round(2)
-                        st.dataframe(bottom_subject, use_container_width=True)
-
-                    # Category-wise averages (Subject %)
-                    cat_df = subject_data.groupby('Category', dropna=True)['Subject_%'].mean().reset_index().dropna()
-                    if len(cat_df) > 0:
-                        fig_cat = px.bar(cat_df, x='Category', y='Subject_%', title=f"📈 {selected_subject} - Subject % by Category",
-                                         color='Category', color_discrete_map={'Bright': '#28a745','Average': '#ffc107','Weak': '#dc3545'})
-                        st.plotly_chart(fig_cat, use_container_width=True)
+                        with col2:
+                            st.subheader(f"⚠️ Need Improvement in {selected_subject}")
+                            bottom_subject = subject_data.nsmallest(10, 'Subject_Marks')[['SR.No', 'Name', 'Subject_Marks']]
+                            bottom_subject['Subject_Marks'] = bottom_subject['Subject_Marks'].round(1)
+                            # Add ranking
+                            bottom_subject['Rank'] = range(1, len(bottom_subject) + 1)
+                            bottom_subject = bottom_subject[['Rank', 'Name', 'Subject_Marks']]
+                            st.dataframe(bottom_subject, use_container_width=True, hide_index=True)
+                    else:
+                        st.warning(f"No MSE or ESE data found for {selected_subject}")
                 else:
                     st.warning(f"No assessment data found for {selected_subject}")
         else:
@@ -566,15 +698,15 @@ elif page == "📊 Subject Analysis":
     else:
         st.warning("📤 Please upload and process an Excel file first.")
 
-# Performance insights page (REMOVED avg and excellence metrics)
-elif page == "🎯 Performance Insights":
+# Performance insights page
+elif page == "🎯 Insights":
     if st.session_state.df_full is not None:
         df_full = st.session_state.df_full
         df_suggestions = st.session_state.df_suggestions
 
         st.header("🎯 Performance Insights & Recommendations")
 
-        # Overall statistics (REMOVED avg overall and excellence rate)
+        # Overall statistics (REMOVED academic percentage as requested)
         st.subheader("📊 Overall Statistics")
 
         col1, col2, col3 = st.columns(3)
@@ -584,24 +716,18 @@ elif page == "🎯 Performance Insights":
             st.metric("👥 Total Students", total_students)
 
         with col2:
-            if 'Academic_Performance_%' in df_full.columns:
-                avg_academic = df_full['Academic_Performance_%'].mean()
-                if pd.notna(avg_academic):
-                    st.metric("📈 Avg Academic %", f"{avg_academic:.2f}%")
-                else:
-                    st.metric("📈 Avg Academic %", "N/A")
-            else:
-                st.metric("📈 Avg Academic %", "N/A")
+            subjects_count = len(get_subject_list(df_full))
+            st.metric("📚 Total Subjects", subjects_count)
 
         with col3:
-            if 'Academic_Performance_%' in df_full.columns:
-                avg_academic = df_full['Academic_Performance_%'].mean()
-                if pd.notna(avg_academic):
-                    st.metric("📈 Avg Academic %", f"{avg_academic:.2f}%")
+            if 'Practical_%' in df_full.columns:
+                avg_practical = df_full['Practical_%'].mean()
+                if pd.notna(avg_practical):
+                    st.metric("💻 Avg Practical %", f"{avg_practical:.2f}%")
                 else:
-                    st.metric("📈 Avg Academic %", "N/A")
+                    st.metric("💻 Avg Practical %", "N/A")
             else:
-                st.metric("📈 Avg Academic %", "N/A")
+                st.metric("💻 Avg Practical %", "N/A")
 
         # Category analysis
         st.subheader("📈 Category-wise Analysis")
@@ -662,48 +788,44 @@ elif page == "🎯 Performance Insights":
                             if df_full[col].dtype in ['int64', 'float64']:
                                 subject_cols.append(col)
 
-                if subject_cols:
-                    # Calculate percentage for this subject (ISE + MSE + ESE + Practical)
-                    theory_cols = [c for c in subject_cols if any(x in c.upper() for x in ['ISE', 'MSE', 'ESE'])]
-                    prac_cols = [c for c in subject_cols if _is_practical_col(c)]
+                # Calculate marks for this subject (MSE + ESE only)
+                subject_marks = get_subject_marks(df_full, subject)
+                
+                if subject_marks:
+                    avg_marks = np.mean(subject_marks)
+                    # Assuming max possible marks for MSE+ESE is 85 (25+60)
+                    max_possible_marks = 85
+                    fail_rate = (np.array(subject_marks) < (max_possible_marks * 0.4)).sum() / len(subject_marks) * 100
 
-                    # Calculate subject percentage for each student
-                    subject_percentages = []
-                    for _, row in df_full.iterrows():
-                        percentage = _row_percentage(row, theory_cols + prac_cols)
-                        if pd.notna(percentage):
-                            subject_percentages.append(percentage)
+                    difficulty_level = "Easy" if avg_marks >= 60 else "Moderate" if avg_marks >= 40 else "Difficult"
 
-                    if subject_percentages:
-                        avg_percentage = np.mean(subject_percentages)
-                        fail_rate = (np.array(subject_percentages) < 40).sum() / len(subject_percentages) * 100
-
-                        difficulty_level = "Easy" if avg_percentage >= 70 else "Moderate" if avg_percentage >= 50 else "Difficult"
-
-                        subject_difficulty.append({
-                            'Subject': subject,
-                            'Avg_Percentage': round(avg_percentage, 2),
-                            'Fail_Rate': round(fail_rate, 1),
-                            'Difficulty': difficulty_level
-                        })
+                    subject_difficulty.append({
+                        'Subject': subject,
+                        'Avg_Marks': round(avg_marks, 2),
+                        'Fail_Rate': round(fail_rate, 1),
+                        'Difficulty': difficulty_level
+                    })
 
             if subject_difficulty:
-                difficulty_df = pd.DataFrame(subject_difficulty).sort_values('Avg_Percentage')
+                difficulty_df = pd.DataFrame(subject_difficulty).sort_values('Avg_Marks')
 
                 # Difficulty visualization
                 fig_difficulty = px.bar(
                     difficulty_df,
                     x='Subject',
-                    y='Avg_Percentage',
+                    y='Avg_Marks',
                     color='Difficulty',
-                    title="📊 Subject Difficulty Analysis (by Percentage)",
+                    title="📊 Subject Difficulty Analysis (by Marks - MSE + ESE)",
                     color_discrete_map={
                         'Easy': '#28a745',
                         'Moderate': '#ffc107',
                         'Difficult': '#dc3545'
                     }
                 )
-                fig_difficulty.update_layout(xaxis_tickangle=-45)
+                fig_difficulty.update_layout(
+                    xaxis_tickangle=-45,
+                    yaxis_title="Average Marks (MSE + ESE)"
+                )
                 st.plotly_chart(fig_difficulty, use_container_width=True)
 
                 st.dataframe(difficulty_df, use_container_width=True)
@@ -729,11 +851,11 @@ elif page == "🎯 Performance Insights":
         if subjects and subject_difficulty:
             difficult_subjects = [s for s in subject_difficulty if s['Difficulty'] == 'Difficult']
             if difficult_subjects:
-                worst_subject = min(difficult_subjects, key=lambda x: x['Avg_Percentage'])
+                worst_subject = min(difficult_subjects, key=lambda x: x['Avg_Marks'])
                 recommendations.append({
                     'Priority': 'High',
                     'Area': 'Curriculum',
-                    'Recommendation': f"{worst_subject['Subject']} shows lowest performance (avg: {worst_subject['Avg_Percentage']:.1f}%)",
+                    'Recommendation': f"{worst_subject['Subject']} shows lowest performance (avg: {worst_subject['Avg_Marks']:.1f} marks)",
                     'Action': 'Review teaching methodology and provide additional resources'
                 })
 
@@ -741,6 +863,7 @@ elif page == "🎯 Performance Insights":
         if 'Academic_Performance_%' in df_full.columns:
             pass_count = len(df_full[df_full['Academic_Performance_%'] >= 40])
             pass_rate = (pass_count / len(df_full)) * 100 if len(df_full) > 0 else 0
+            avg_academic = df_full['Academic_Performance_%'].mean()
 
             if pass_rate < 80:
                 recommendations.append({
@@ -749,6 +872,9 @@ elif page == "🎯 Performance Insights":
                     'Recommendation': f'Pass rate is {pass_rate:.1f}% - below acceptable threshold',
                     'Action': 'Implement comprehensive support system and early warning mechanisms'
                 })
+        else:
+            pass_rate = 0
+            avg_academic = None
 
         # Display recommendations
         if recommendations:
@@ -803,206 +929,265 @@ elif page == "🎯 Performance Insights":
         st.warning("📤 Please upload and process an Excel file first.")
 
 
-# NEW PAGE: Threshold-Based Recommendations
-elif page == "🎯 Threshold-Based Recommendations":
+
+# Reports & Export page
+elif page == "📋 Reports":
     if st.session_state.df_full is not None:
         df_full = st.session_state.df_full
-        subjects = get_subject_list(df_full)
-
-        st.markdown('<div class="dynamic-rec-header">🎯 Threshold-Based Student Recommendation System</div>', unsafe_allow_html=True)
-        st.markdown("""
+        df_suggestions = st.session_state.df_suggestions
         
-        """, unsafe_allow_html=True)
-
-        if subjects:
-            # Subject and threshold input section
-            col1, col2 = st.columns([2, 1])
-
-            with col1:
-                selected_subject = st.selectbox(
-                    "📚 Select Subject",
-                    subjects,
-                    help="Choose a subject to analyze"
-                )
-
-            with col2:
-                # Get available exam types for the selected subject
-                exam_types = get_subject_exam_types(df_full, selected_subject)
-                exam_types.insert(0, "All Exam Types")  # Add option for all types
-
-                selected_exam_type = st.selectbox(
-                    "📝 Exam Type (Optional)",
-                    exam_types,
-                    help="Choose specific exam type or leave as 'All' for comprehensive analysis"
-                )
-
-            # Threshold input with validation
-            st.markdown("### 📊 Set Threshold Value")
-
-            col3, col4, col5 = st.columns([1, 1, 1])
-
-            with col3:
-                threshold_value = st.number_input(
-                    "🎯 Threshold Marks",
-                    min_value=0,
-                    max_value=500,
-                    value=40,
-                    help="Enter the minimum marks threshold"
-                )
-
-            with col4:
-                # Dynamically detect max marks from column headers for subject/exam selection
-                subject_upper = selected_subject.upper()
-                def _matches_exam(col_upper, exam_type_value):
-                    if exam_type_value == "All Exam Types":
-                        return True
-                    et = exam_type_value.upper()
-                    return et in col_upper
-
-                detected_max = 0
-                for col in df_full.columns:
-                    col_upper = str(col).upper()
-                    if subject_upper in col_upper and _matches_exam(col_upper, selected_exam_type):
-                        detected_max = max(detected_max, extract_max_marks_from_header(col))
-                # Fallback if nothing detected
-                if detected_max == 0:
-                    detected_max = _get_max_marks_for_subject(selected_subject, None if selected_exam_type == "All Exam Types" else selected_exam_type)
-
-                max_marks = detected_max
-                st.metric("💯 Max Marks", int(max_marks))
-
-            with col5:
-                # Validation indicator
-                if threshold_value > max_marks:
-                    st.error(f"❌ Threshold exceeds max marks!")
-                else:
-                    st.success(f"✅ Valid threshold")
-
-            # Generate recommendations button
-            if st.button("🚀 Generate Threshold Recommendations", type="primary", use_container_width=True):
-
-                # Validate threshold before processing
-                if threshold_value > max_marks:
-                    st.error(f"""
-                    🚨 **Invalid Threshold Value!**
-
-                    **Threshold**: {threshold_value} marks
-                    **Maximum Marks**: {max_marks} marks
-
-                    Please enter a threshold value that is less than or equal to the maximum marks for {selected_subject} {selected_exam_type if selected_exam_type != "All Exam Types" else ""}.
-                    """)
-                else:
-                    # Get recommendations
-                    exam_type_param = None if selected_exam_type == "All Exam Types" else selected_exam_type
-                    results = get_threshold_based_recommendations(
-                        df_full,
-                        selected_subject,
-                        threshold_value,
-                        exam_type_param
-                    )
-
-                    if results['error']:
-                        st.error(f"❌ {results['message']}")
-                    else:
-                        # Display results
-                        st.success(f"✅ {results['message']}")
-
-                        # Summary metrics
-                        col_sum1, col_sum2, col_sum3 = st.columns(3)
-
-                        with col_sum1:
-                            st.metric("📊 Students Above Threshold", len(results['students']))
-
-                        with col_sum2:
-                            st.metric("👥 Total Students", results['total_students'])
-
-                        with col_sum3:
-                            st.metric("📈 Percentage Above Threshold", f"{results['percentage_above_threshold']:.1f}%")
-
-                        # Display students above threshold
-                        if results['students']:
-                            st.markdown("### 🏆 Students Above Threshold")
-
-                            # Create DataFrame for display
-                            display_data = []
-                            for student in results['students']:
-                                display_data.append({
-                                    'Student Name': student['Student Name'],
-                                    'Roll No': student['Roll No'],
-                                    'Exam Type': student['Exam Type'],
-                                    'Marks': student['Marks'],
-                                    'Max Marks': int(student.get('Max Marks', max_marks)),
-                                    'Threshold': student['Threshold'],
-                                    'Performance': student['Performance']
+        st.header("📋 Reports & Export Center")
+        
+        # Report type selection
+        report_type = st.selectbox(
+            "Select Report Type",
+            [
+                "📊 Comprehensive Analysis Report",
+                "👥 Individual Student Reports", 
+                "📚 Subject-wise Reports",
+                "🎯 Performance Summary Report",
+                "📈 Trend Analysis Report"
+            ]
+        )
+        
+        if report_type == "📊 Comprehensive Analysis Report":
+            st.subheader("📊 Comprehensive Analysis Report")
+            
+            # Generate comprehensive report
+            if st.button("🚀 Generate Comprehensive Report", type="primary"):
+                with st.spinner("Generating comprehensive report..."):
+                    # Create report data
+                    report_data = {
+                        'report_metadata': {
+                            'generated_at': datetime.now().isoformat(),
+                            'total_students': len(df_full),
+                            'total_subjects': len(get_subject_list(df_full)),
+                            'report_type': 'Comprehensive Analysis'
+                        },
+                        'summary_statistics': {},
+                        'category_analysis': {},
+                        'subject_analysis': {},
+                        'recommendations': []
+                    }
+                    
+                    # Summary statistics
+                    if 'Academic_Performance_%' in df_full.columns:
+                        avg_academic = df_full['Academic_Performance_%'].mean()
+                        report_data['summary_statistics'] = {
+                            'average_academic_performance': float(avg_academic),
+                            'median_academic_performance': float(df_full['Academic_Performance_%'].median()),
+                            'std_academic_performance': float(df_full['Academic_Performance_%'].std()),
+                            'min_academic_performance': float(df_full['Academic_Performance_%'].min()),
+                            'max_academic_performance': float(df_full['Academic_Performance_%'].max())
+                        }
+                    
+                    # Category analysis
+                    if 'Category' in df_suggestions.columns:
+                        category_counts = df_suggestions['Category'].value_counts()
+                        report_data['category_analysis'] = category_counts.to_dict()
+                    
+                    # Subject analysis
+                    subjects = get_subject_list(df_full)
+                    subject_analysis = {}
+                    for subject in subjects:
+                        subject_cols = [col for col in df_full.columns if subject.upper() in col.upper()]
+                        if subject_cols:
+                            subject_data = df_full[subject_cols].mean(axis=1)
+                            subject_analysis[subject] = {
+                                'average_performance': float(subject_data.mean()),
+                                'std_performance': float(subject_data.std()),
+                                'total_students': len(subject_data)
+                            }
+                    report_data['subject_analysis'] = subject_analysis
+                    
+                    # Generate recommendations
+                    if 'Academic_Performance_%' in df_full.columns:
+                        weak_students = len(df_full[df_full['Academic_Performance_%'] < 60])
+                        if weak_students > 0:
+                            report_data['recommendations'].append({
+                                'priority': 'High',
+                                'area': 'Academic Support',
+                                'description': f'{weak_students} students need additional academic support',
+                                'action': 'Implement remedial classes and peer tutoring'
+                            })
+                    
+                    # Display report
+                    st.success("✅ Comprehensive report generated successfully!")
+                    
+                    # Show report preview
+                    with st.expander("📋 Report Preview", expanded=True):
+                        st.json(report_data)
+                    
+                    # Download options
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        # JSON download
+                        json_data = json.dumps(report_data, indent=2, default=str)
+                        st.download_button(
+                            "📥 Download JSON Report",
+                            json_data,
+                            f"comprehensive_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                            "application/json"
+                        )
+                    
+                    with col2:
+                        # CSV download
+                        csv_data = df_full.to_csv(index=False)
+                        st.download_button(
+                            "📊 Download Full Data CSV",
+                            csv_data,
+                            f"full_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            "text/csv"
+                        )
+                    
+                    with col3:
+                        # Summary CSV download
+                        summary_csv = df_suggestions.to_csv(index=False)
+                        st.download_button(
+                            "📋 Download Summary CSV",
+                            summary_csv,
+                            f"summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            "text/csv"
+                        )
+        
+        elif report_type == "👥 Individual Student Reports":
+            st.subheader("👥 Individual Student Reports")
+            
+            # Student selection
+            if 'Name' in df_full.columns:
+                selected_student = st.selectbox("Select Student", df_full['Name'].tolist())
+                
+                if selected_student:
+                    student_data = df_full[df_full['Name'] == selected_student].iloc[0]
+                    
+                    # Generate individual report
+                    if st.button("📄 Generate Student Report", type="primary"):
+                        with st.spinner("Generating student report..."):
+                            # Create student report
+                            student_report = {
+                                'student_info': {
+                                    'name': student_data.get('Name', 'N/A'),
+                                    'roll_no': student_data.get('Roll No', 'N/A'),
+                                    'sr_no': student_data.get('SR.No', 'N/A')
+                                },
+                                'performance_metrics': {
+                                    'academic_performance': float(student_data.get('Academic_Performance_%', 0)),
+                                    'practical_performance': float(student_data.get('Practical_%', 0)),
+                                    'coding_expertise': student_data.get('Coding_Expertise', 'N/A'),
+                                    'category': student_data.get('Category', 'N/A')
+                                },
+                                'subject_wise_performance': {},
+                                'recommendations': []
+                            }
+                            
+                            # Subject-wise performance
+                            subjects = get_subject_list(df_full)
+                            for subject in subjects:
+                                subject_cols = [col for col in df_full.columns if subject.upper() in col.upper()]
+                                if subject_cols:
+                                    subject_scores = []
+                                    for col in subject_cols:
+                                        score = student_data.get(col, 0)
+                                        if pd.notna(score) and score > 0:
+                                            subject_scores.append(float(score))
+                                    
+                                    if subject_scores:
+                                        student_report['subject_wise_performance'][subject] = {
+                                            'average_score': float(np.mean(subject_scores)),
+                                            'total_scores': subject_scores,
+                                            'max_possible': len(subject_scores) * 100  # Assuming max 100 per assessment
+                                        }
+                            
+                            # Generate recommendations
+                            academic_perf = student_report['performance_metrics']['academic_performance']
+                            if academic_perf < 60:
+                                student_report['recommendations'].append({
+                                    'priority': 'High',
+                                    'area': 'Academic Improvement',
+                                    'description': 'Student needs immediate academic support',
+                                    'action': 'Schedule regular tutoring sessions'
                                 })
-
-                            df_display = pd.DataFrame(display_data)
-                            st.dataframe(df_display, use_container_width=True)
-
-                            # Download option
-                            csv = df_display.to_csv(index=False)
+                            elif academic_perf < 80:
+                                student_report['recommendations'].append({
+                                    'priority': 'Medium',
+                                    'area': 'Performance Enhancement',
+                                    'description': 'Student can improve with targeted support',
+                                    'action': 'Provide additional practice materials'
+                                })
+                            
+                            # Display report
+                            st.success(f"✅ Report generated for {selected_student}")
+                            
+                            # Show report preview
+                            with st.expander("📋 Student Report Preview", expanded=True):
+                                st.json(student_report)
+                            
+                            # Download student report
+                            json_data = json.dumps(student_report, indent=2, default=str)
                             st.download_button(
-                                label="📥 Download Results as CSV",
-                                data=csv,
-                                file_name=f"{selected_subject}_threshold_{threshold_value}_results.csv",
-                                mime="text/csv"
+                                "📥 Download Student Report",
+                                json_data,
+                                f"student_report_{selected_student.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                "application/json"
                             )
-
-                            # Performance insights
-                            st.markdown("### 📈 Performance Insights")
-
-                            if results['percentage_above_threshold'] >= 80:
-                                st.success("🌟 **Excellent Class Performance**: Most students are performing well above the threshold!")
-                            elif results['percentage_above_threshold'] >= 60:
-                                st.info("👍 **Good Class Performance**: A majority of students are meeting the threshold.")
-                            elif results['percentage_above_threshold'] >= 40:
-                                st.warning("⚠️ **Moderate Performance**: Many students need improvement to meet the threshold.")
-                            else:
-                                st.error("🚨 **Low Performance**: Most students are below the threshold and need immediate support.")
-
-                            # Recommendations based on results
-                            st.markdown("### 💡 Recommendations")
-
-                            if results['percentage_above_threshold'] < 50:
-                                st.markdown("""
-                                **Immediate Actions Needed:**
-                                - 📚 Review teaching methodology for this subject
-                                - 👨‍🏫 Provide additional support sessions
-                                - 📊 Analyze common weak areas
-                                - 🤝 Implement peer tutoring programs
-                                """)
-                            elif results['percentage_above_threshold'] < 75:
-                                st.markdown("""
-                                **Improvement Strategies:**
-                                - 📈 Focus on students below threshold
-                                - 🎯 Provide targeted practice materials
-                                - 📝 Regular assessment and feedback
-                                """)
-                            else:
-                                st.markdown("""
-                                **Maintenance & Enhancement:**
-                                - 🏆 Challenge high performers with advanced topics
-                                - 👥 Encourage peer mentoring
-                                - 📚 Introduce enrichment programs
-                                """)
-                        else:
-                            st.warning("No students found above the specified threshold. Consider lowering the threshold value.")
-        else:
-            st.warning("No subjects found in the uploaded data. Please upload a file first.")
+        
+        # Bulk export options
+        st.markdown("---")
+        st.subheader("📦 Bulk Export Options")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("📊 Export All Data", help="Export complete dataset"):
+                csv_data = df_full.to_csv(index=False)
+                st.download_button(
+                    "📥 Download Complete Dataset",
+                    csv_data,
+                    f"complete_dataset_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    "text/csv"
+                )
+        
+        with col2:
+            if st.button("📋 Export Summary", help="Export summary data"):
+                summary_data = df_suggestions.to_csv(index=False)
+                st.download_button(
+                    "📥 Download Summary Data",
+                    summary_data,
+                    f"summary_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    "text/csv"
+                )
+        
+        with col3:
+            if st.button("📈 Export Analytics", help="Export analytics data"):
+                # Create analytics summary
+                analytics_data = {
+                    'total_students': len(df_full),
+                    'total_subjects': len(get_subject_list(df_full)),
+                    'category_distribution': df_suggestions['Category'].value_counts().to_dict() if 'Category' in df_suggestions.columns else {},
+                    'performance_statistics': df_full.describe().to_dict() if len(df_full) > 0 else {}
+                }
+                
+                analytics_json = json.dumps(analytics_data, indent=2, default=str)
+                st.download_button(
+                    "📥 Download Analytics Data",
+                    analytics_json,
+                    f"analytics_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    "application/json"
+                )
+    
     else:
         st.warning("📤 Please upload and process an Excel file first.")
+
 
 # Footer
 st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center; color: #666;'>
-        <p>🎓 GradeGraph -</p>
-        <p>Built by Kshitij and Shweta for COMPUTER DEPARTMENT</p>
+        <p>🎓 GradeGraph - Student Performance Analyzer</p>
+        <p>Built by Kshitij and Shweta for COMPUTER DEPARTMENT JSPM's RSCOE.</p>
     </div>
     """,
     unsafe_allow_html=True
 )
-
-
-

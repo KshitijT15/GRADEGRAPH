@@ -1,5 +1,5 @@
 from .processing import process_excel_file
-from .subjects import get_subject_list, get_subject_exam_types
+from .subjects import get_subject_list, get_subject_exam_types, get_subject_marks, get_subject_marks_summary
 from .students import get_student_performance
 from .recommendations import (
     get_dynamic_subject_recommendations,
@@ -15,6 +15,8 @@ __all__ = [
     'process_excel_file',
     'get_subject_list',
     'get_subject_exam_types',
+    'get_subject_marks',
+    'get_subject_marks_summary',
     'get_student_performance',
     'get_dynamic_subject_recommendations',
     'get_subject_recommendations',
