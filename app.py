@@ -268,10 +268,10 @@ if st.session_state.get('df_full') is not None and st.session_state.get('df_sugg
             st.metric("Subjects", len(get_subject_list(df_full_sidebar)))
         col_c, col_d = st.columns(2)
         with col_c:
-            bright = (df_sugg_sidebar['Category'] == 'Bright').sum()
+            bright = (df_full_sidebar['Category'] == 'Bright').sum() if 'Category' in df_full_sidebar.columns else 0
             st.metric("Bright", int(bright))
         with col_d:
-            weak = (df_sugg_sidebar['Category'] == 'Weak').sum()
+            weak = (df_full_sidebar['Category'] == 'Weak').sum() if 'Category' in df_full_sidebar.columns else 0
             st.metric("Weak", int(weak))
 
 # File upload section
@@ -293,6 +293,32 @@ if page == "📤 Upload":
 
             st.success("✅ File processed successfully!")
 
+            # Calculate counts with debugging
+            if 'Category' in df_full.columns:
+                bright_count = len(df_full[df_full['Category'] == 'Bright'])
+                weak_count = len(df_full[df_full['Category'] == 'Weak'])
+                
+                # Debug information
+                st.info(f"🔍 Debug Info: Category column found. Bright: {bright_count}, Weak: {weak_count}")
+                st.info(f"Available categories: {df_full['Category'].value_counts().to_dict()}")
+            else:
+                bright_count = 0
+                weak_count = 0
+                st.error("❌ Category column not found in dataframe!")
+                st.info(f"Available columns: {list(df_full.columns)}")
+            
+            # Prominent display of bright learners count
+            st.markdown(f"""
+            <div style="text-align: center; margin: 2rem 0; padding: 1.5rem; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); border-radius: 12px; box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);">
+                <h2 style="color: white; margin: 0; font-size: 2.5rem; font-weight: 700;">
+                    🌟 {bright_count} BRIGHT LEARNERS
+                </h2>
+                <p style="color: rgba(255,255,255,0.9); margin: 0.5rem 0 0 0; font-size: 1.1rem;">
+                    Out of {len(df_full)} total students ({bright_count/len(df_full)*100:.1f}% if len(df_full) > 0 else 0%)
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+
             # Display basic statistics (REMOVED avg and excellence scores)
             col1, col2, col3, col4 = st.columns(4)
 
@@ -304,11 +330,11 @@ if page == "📤 Upload":
                 st.metric("📖 Subjects", len(subjects))
 
             with col3:
-                bright_count = len(df_suggestions[df_suggestions['Category'] == 'Bright'])
+                bright_count = len(df_full[df_full['Category'] == 'Bright']) if 'Category' in df_full.columns else 0
                 st.metric("🌟 Bright Learners", bright_count)
 
             with col4:
-                weak_count = len(df_suggestions[df_suggestions['Category'] == 'Weak'])
+                weak_count = len(df_full[df_full['Category'] == 'Weak']) if 'Category' in df_full.columns else 0
                 st.metric("⚠️ Weak Learners", weak_count)
 
             # Calculation Logic Explanation
@@ -342,6 +368,34 @@ elif page == "📈 Dashboard":
 
         st.header("📈 Performance Dashboard")
         
+        # Calculate bright learners count with debugging
+        if 'Category' in df_full.columns:
+            bright_count = len(df_full[df_full['Category'] == 'Bright'])
+            weak_count = len(df_full[df_full['Category'] == 'Weak'])
+            
+            # Debug information
+            with st.expander("🔍 Debug Information", expanded=False):
+                st.info(f"Category column found. Bright: {bright_count}, Weak: {weak_count}")
+                st.info(f"Available categories: {df_full['Category'].value_counts().to_dict()}")
+                st.dataframe(df_full[['Name', 'Category', 'Academic_Performance_%']].head(10))
+        else:
+            bright_count = 0
+            weak_count = 0
+            st.error("❌ Category column not found in dataframe!")
+            st.info(f"Available columns: {list(df_full.columns)}")
+        
+        # Prominent display of bright learners count
+        st.markdown(f"""
+        <div style="text-align: center; margin: 2rem 0; padding: 1.5rem; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); border-radius: 12px; box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);">
+            <h2 style="color: white; margin: 0; font-size: 2.5rem; font-weight: 700;">
+                🌟 {bright_count} BRIGHT LEARNERS
+            </h2>
+            <p style="color: rgba(255,255,255,0.9); margin: 0.5rem 0 0 0; font-size: 1.1rem;">
+                Out of {len(df_full)} total students ({bright_count/len(df_full)*100:.1f}% if len(df_full) > 0 else 0%)
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
         # Key Performance Indicators
         col1, col2, col3, col4, col5 = st.columns(5)
         
@@ -373,7 +427,7 @@ elif page == "📈 Dashboard":
                 st.metric("📈 Avg Performance", "N/A")
         
         with col4:
-            bright_count = len(df_suggestions[df_suggestions['Category'] == 'Bright'])
+            bright_count = len(df_full[df_full['Category'] == 'Bright']) if 'Category' in df_full.columns else 0
             st.metric(
                 "🌟 Bright Students", 
                 bright_count,
@@ -382,7 +436,7 @@ elif page == "📈 Dashboard":
             )
         
         with col5:
-            weak_count = len(df_suggestions[df_suggestions['Category'] == 'Weak'])
+            weak_count = len(df_full[df_full['Category'] == 'Weak']) if 'Category' in df_full.columns else 0
             st.metric(
                 "⚠️ Weak Students", 
                 weak_count,
@@ -475,37 +529,26 @@ elif page == "📈 Dashboard":
         with col4:
             st.markdown("### ⚠️ Students Needing Attention")
             if 'Academic_Performance_%' in filtered_df.columns:
-                try:
-                    # Check if Category column exists in the main dataframe
-                    if 'Category' in filtered_df.columns:
-                        # Get only weak students directly from main dataframe
-                        weak_students = filtered_df[filtered_df['Category'] == 'Weak']
-                        
-                        if len(weak_students) > 0:
-                            # Select and prepare the data
-                            weak_students_detailed = weak_students[['SR.No', 'Name', 'Academic_Performance_%', 'Category']].copy()
-                            
-                            # Sort by performance (lowest first)
-                            weak_students_detailed = weak_students_detailed.sort_values('Academic_Performance_%')
-                            weak_students_detailed['Academic_Performance_%'] = weak_students_detailed['Academic_Performance_%'].round(2)
-                            
-                            # Add ranking
-                            weak_students_detailed['Rank'] = range(1, len(weak_students_detailed) + 1)
-                            weak_students_detailed = weak_students_detailed[['Rank', 'Name', 'Academic_Performance_%', 'Category']]
-                            
-                            st.dataframe(
-                                weak_students_detailed, 
-                                use_container_width=True,
-                                hide_index=True
-                            )
-                        else:
-                            st.info("No weak students identified in the current dataset.")
+                # Show ALL weak learners, sorted by lowest performance first
+                if 'Category' in filtered_df.columns:
+                    weak_learners = filtered_df[filtered_df['Category'] == 'Weak'][['SR.No', 'Name', 'Academic_Performance_%', 'Category']]
+                    if len(weak_learners) > 0:
+                        weak_learners = weak_learners.sort_values('Academic_Performance_%', ascending=True).copy()
+                        weak_learners['Academic_Performance_%'] = weak_learners['Academic_Performance_%'].round(2)
+
+                        # Add ranking
+                        weak_learners['Rank'] = range(1, len(weak_learners) + 1)
+                        weak_learners = weak_learners[['Rank', 'Name', 'Academic_Performance_%', 'Category']]
+
+                        st.dataframe(
+                            weak_learners,
+                            use_container_width=True,
+                            hide_index=True
+                        )
                     else:
-                        st.error("Category column not found in the main dataframe.")
-                        st.info("Available columns: " + ", ".join(filtered_df.columns.tolist()))
-                except Exception as e:
-                    st.error(f"Error displaying weak students: {str(e)}")
-                    st.info("Please check if the data is properly processed.")
+                        st.info("No weak students identified in the current dataset.")
+                else:
+                    st.info("Category data not available to determine weak learners.")
             else:
                 st.info("Performance data not available")
 
@@ -732,7 +775,7 @@ elif page == "🎯 Insights":
         # Category analysis
         st.subheader("📈 Category-wise Analysis")
 
-        category_stats = df_suggestions['Category'].value_counts()
+        category_stats = df_full['Category'].value_counts() if 'Category' in df_full.columns else pd.Series()
 
         col5, col6 = st.columns(2)
 
@@ -1186,7 +1229,7 @@ st.markdown(
     """
     <div style='text-align: center; color: #666;'>
         <p>🎓 GradeGraph - Student Performance Analyzer</p>
-        <p>Built by Kshitij and Shweta for COMPUTER DEPARTMENT JSPM's RSCOE.</p>
+        <p>Built by Kshitij and Shweta for COMPUTER DEPARTMENT, JSPM's RSCOE.</p>
     </div>
     """,
     unsafe_allow_html=True
