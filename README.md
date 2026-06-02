@@ -1,149 +1,125 @@
-📊✨ GRADEGRAPH — Student Performance Analysis & Insights
+# 🎓 GradeGraph — Student Performance Analyzer
 
-GRADEGRAPH is a Python-based academic performance analysis system that reads student data from an Excel sheet 📘, processes subject-wise marks 📚, identifies weak/average/bright learners 🎯, and generates meaningful insights along with visualizations 📈.
+A Streamlit-based academic performance analysis dashboard that ingests student mark sheets from Excel, classifies learners, and surfaces subject-wise insights for teachers and department coordinators.
 
-Designed for teachers, mentors, coordinators, and students, GRADEGRAPH provides a clear, data-driven picture of academic performance.
+**Live App →** https://gradegraph-computerdepartment.streamlit.app/
 
-🚀✨ Features
+---
 
-📥 Import student data directly from Excel
+## Features
 
-🧮 Automatic learner classification: Weak → W, Average → OK, Bright → D
+- **Excel Import** — reads hierarchical multi-subject mark sheets starting at the `SR.No.` row and flattens headers automatically
+- **Learner Classification** — tags each student as **Bright (D)**, **Average (OK)**, or **Weak (W)** using academic performance percentage and coding expertise level
+- **Dashboard** — KPI cards, donut chart of category distribution, box plot of performance spread, top-10 bright learners, and a full weak-learner attention list
+- **Individual Student Lookup** — search by SR.No. or name; see per-subject scores and coding level
+- **Subject-wise Analysis** — average, max, min, std dev for any subject; top and bottom 10 performers per subject
+- **Insights & Recommendations** — subject difficulty classification (Easy / Moderate / Difficult based on MSE + ESE averages), actionable priority recommendations, JSON report export
+- **Reports & Export** — CSV downloads for bright/weak learner lists, comprehensive JSON report
+- **Theming** — Default and Dark Mode toggle in sidebar
 
-📊 Subject-wise analysis with personalized recommendations
+---
 
-🏆 Identify Top 10 performers
+## Project Structure
 
-🚨 Identify Students needing attention
-
-📘 Subject difficulty insights using class averages
-
-🧩 Clean and modular architecture
-
-💻 Easy Streamlit integration for dashboard UI
-
-📁 Folder Structure
+```
 GRADEGRAPH/
-├── app.py                     # Main UI & routing (Streamlit)
-├── processor.py               # Core logic for analysis & classification
-├── requirements.txt           # Dependencies
-├── README.md                  # Documentation
-└── sample/                    # (Optional) Sample datasets & exports
+├── app.py              # Streamlit UI — all pages and routing
+├── services/           # Core logic (data processing, classification, subject helpers)
+├── requirements.txt    # Python dependencies
+├── desktop.ini         # Windows metadata (ignore)
+└── README.md
+```
 
-📥🧾 Excel Dataset Used
+---
 
-Add your dataset link or file here.
+## Dataset Format
 
-Dataset Name: Gradegraph Dataset
-📌 (https://docs.google.com/spreadsheets/d/1C_knPEfpg2FyuutvDw-VlXP0NPnNIExM/edit?usp=sharing&ouid=114272333005547331230&rtpof=true&sd=true)
+The app expects an `.xlsx` file where the first meaningful row contains `SR.No.` as its first cell. Subject marks are organized with hierarchical column headers like:
 
-📐 Expected Dataset Format
+| SR.No. | Name | Roll No | Mathematics – ISE | Mathematics – MSE | Mathematics – ESE | Mathematics – PR | … | Coding Expertise |
+|--------|------|---------|-------------------|-------------------|-------------------|-----------------|---|-----------------|
 
-The Excel sheet should include:
+- **ISE / MSE** — Internal/Mid-Semester Exams (max 25 each)  
+- **ESE** — End-Semester Exam (max 60)  
+- **PR / PRACTICAL** — Practical assessment (max 25)  
+- **TW** — Term Work (max 50)  
+- **Coding Expertise** — `A` (Advanced), `I` (Intermediate), `B` (Beginner)
 
-🧑‍🎓 Student details
+Sample dataset: [Google Sheets link](https://docs.google.com/spreadsheets/d/1C_knPEfpg2FyuutvDw-VlXP0NPnNIExM/edit?usp=sharing)
 
-📘 Subject-wise marks:
+---
 
-Subject → ISE, MSE, ESE, Practical
+## Classification Logic
 
-💻 Coding skill levels
+| Category | Criteria |
+|----------|----------|
+| **Bright** | High academic performance % + strong coding expertise |
+| **Average** | Mid-range performance |
+| **Weak** | Below threshold — flagged for intervention |
 
-📊 Additional academic metrics (if available)
+Academic Performance % = (total marks obtained) ÷ (total maximum marks possible) × 100  
+Practical % is calculated separately from columns matching `PRACTICAL` or `\bPR\b`.
 
-📋 Example Column Structure
-Column
-SR.No.
-Student Name
-Mathematics – ISE
-Mathematics – MSE
-Mathematics – ESE
-Physics – ISE
-Physics – MSE
-… and more
-⚙️ Installation
-⬇️ 1. Clone the Repository
+---
+
+## Setup
+
+### 1. Clone
+
+```bash
 git clone https://github.com/KshitijT15/GRADEGRAPH
 cd GRADEGRAPH
+```
 
-📦 2. Install Dependencies
+### 2. Create a virtual environment (recommended)
+
+```bash
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+```
+
+### 3. Install dependencies
+
+```bash
 pip install -r requirements.txt
+```
 
-▶️ Running the Application
-🖥️ Standard Python Execution
-python app.py
+Dependencies include: `streamlit`, `pandas`, `numpy`, `plotly`, `openpyxl`
 
-🌐 Streamlit Dashboard
+### 4. Run
+
+```bash
 streamlit run app.py
+```
 
-🧠🔍 How It Works (High-Level Overview)
+The app opens at `http://localhost:8501` by default.
 
-📥 Excel Import
+---
 
-Reads data starting at the SR.No. column
+## Usage
 
-Flattens hierarchical headers automatically
+1. Navigate to **📤 Upload** in the sidebar and upload your `.xlsx` mark sheet.
+2. The app processes the file, classifies students, and stores results in session state.
+3. Use the sidebar to switch between **Dashboard**, **Students**, **Subjects**, **Insights**, and **Reports**.
+4. The sidebar snapshot shows live counts of Bright / Weak students across all pages.
+5. To load a new dataset, click **🔄 Refresh Data** in the sidebar.
 
-🛠️ Data Processing
+---
 
-Cleaning, transformation, and subject-wise normalization
+## Deployment (Streamlit Community Cloud)
 
-🎯 Classification
-Learners are categorized as:
+The app is already deployed. To redeploy your own fork:
 
-❗ W → Weak
+1. Push your repo to GitHub.
+2. Go to [share.streamlit.io](https://share.streamlit.io) → **New app**.
+3. Select repo `GRADEGRAPH`, branch `main`, main file `app.py`.
+4. Click **Deploy**. No secrets or environment variables required.
 
-⚪ OK → Average
+---
 
-🌟 D → Bright
+## Contributors
 
-📊 Insights Generated
+- **Kshitij Thorat** — [KshitijT15](https://github.com/KshitijT15) — core development
+- **Shweta Tate** — [Shwetatate](https://github.com/Shwetatate) — contributor
 
-🏆 Top performers
-
-🚨 Students needing attention
-
-📘 Subject difficulty levels
-
-💡 Student-wise recommendations
-
-📈 Visualization
-
-Streamlined charts and performance graphs
-
-Exportable insights
-
-📈 Key Insights
-🏆 Top Performers
-
-Students with the highest academic percentage.
-
-🚨 Students Needing Attention
-
-Learners who fall below performance thresholds.
-
-📘 Subject Difficulty
-
-Low class average → Higher difficulty.
-
-💡 Recommendations
-
-Personalized subject-wise suggestions for weak learners.
-
-📦 Dependencies
-
-Example requirements.txt:
-
-pandas
-numpy
-matplotlib
-openpyxl
-streamlit
-
-📸 Screenshots / Demo
-
-<img width="1588" height="906" alt="Screenshot 2025-12-01 233439" src="https://github.com/user-attachments/assets/547e3df0-4a1e-46fb-923c-2b018a496f53" />
-
-Link- https://gradegraph-computerdepartment.streamlit.app/
-
-Contributions are always welcome! 💙
+Contributions welcome — open an issue or pull request!
